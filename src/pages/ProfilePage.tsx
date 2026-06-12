@@ -32,12 +32,18 @@ export default function ProfilePage() {
     setFetchError(null);
     const [profileRes, predsRes] = await Promise.all([
       supabase.from('profiles').select('*').eq('id', profileId).maybeSingle(),
-      supabase
-        .from('predictions')
-        .select('*, fixtures:fixture_id(home_team, away_team)')
-        .eq('user_id', profileId)
-        .order('created_at', { ascending: false })
-        .limit(20),
+      (() => {
+        // Own profile: show all predictions (including upcoming) so the user
+        // can review their own future picks.
+        // Other profiles: only completed fixtures — prevents seeing future predictions.
+        const q = supabase
+          .from('predictions')
+          .select('*, fixtures!inner(home_team, away_team, status)')
+          .eq('user_id', profileId)
+          .order('created_at', { ascending: false })
+          .limit(50);
+        return isOwnProfile ? q : q.eq('fixtures.status', 'completed');
+      })(),
     ]);
     if (profileRes.error) { setFetchError('Failed to load profile.'); return; }
     if (profileRes.data) setProfileData(profileRes.data);
@@ -47,6 +53,7 @@ export default function ProfilePage() {
         ...p,
         home_team: p.fixtures?.home_team || '',
         away_team: p.fixtures?.away_team || '',
+        fixture_status: p.fixtures?.status || '',
       })));
     }
   }, [profileId]);
