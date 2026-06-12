@@ -312,7 +312,7 @@ export default function FixtureDetailPage() {
             </CardContent>
           </Card>
 
-          {/* <Card>
+          <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
                 <Users className="w-4 h-4 text-sky-400" />Prediction Feed
@@ -341,7 +341,7 @@ export default function FixtureDetailPage() {
                 </div>
               )}
             </CardContent>
-          </Card> */}
+          </Card> 
         </motion.div>
       </div>
     </div>
