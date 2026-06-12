@@ -262,7 +262,7 @@ export default function FixtureDetailPage() {
                       {getWinner(homeScore, awayScore) === 'draw' ? 'Draw'
                         : getWinner(homeScore, awayScore) === 'home' ? `${fixture.home_team} Win` : `${fixture.away_team} Win`}
                     </Badge>
-                    <p className="text-xs text-gray-500">Correct winner: +2 pts · Exact score: +5 pts total</p>
+                    <p className="text-xs text-gray-500">Correct winner: +2 pts · Exact score: +3 pts · Wrong Winner: -1 pts· No Submission: -1 pts</p>
                   </div>
                   <Button onClick={handleSave} className="w-full" disabled={saving || locked}>
                     <Save className="w-4 h-4 mr-2" />
