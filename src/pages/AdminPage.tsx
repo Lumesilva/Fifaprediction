@@ -18,6 +18,54 @@ import { Navigate } from 'react-router-dom';
 
 type Tab = 'fixtures' | 'results' | 'users' | 'stats' | 'settings';
 
+/** Reusable toggle row for settings panel. */
+function SettingToggle({
+  title,
+  description,
+  chips,
+  enabled,
+  saving,
+  onToggle,
+}: {
+  title: string;
+  description: string;
+  chips: { label: string; active: boolean }[];
+  enabled: boolean;
+  saving: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-between p-4 bg-gray-800/50 rounded-xl border border-gray-700">
+      <div className="space-y-1 flex-1 min-w-0 pr-4">
+        <p className="text-sm font-semibold text-white">{title}</p>
+        <p className="text-xs text-gray-400">{description}</p>
+        <div className="flex gap-2 mt-2 flex-wrap">
+          {chips.map(c => (
+            <span
+              key={c.label}
+              className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                c.active ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400'
+              }`}
+            >
+              {c.label}
+            </span>
+          ))}
+        </div>
+      </div>
+      <button
+        onClick={onToggle}
+        disabled={saving}
+        className="flex-shrink-0 transition-opacity disabled:opacity-50"
+        aria-label={`Toggle ${title}`}
+      >
+        {enabled
+          ? <ToggleRight className="w-12 h-12 text-emerald-400" />
+          : <ToggleLeft className="w-12 h-12 text-gray-500" />}
+      </button>
+    </div>
+  );
+}
+
 /** Confirmation modal for destructive actions. */
 function ConfirmModal({
   message, onConfirm, onCancel,
@@ -66,8 +114,9 @@ export default function AdminPage() {
   });
   const [savingEdit, setSavingEdit] = useState(false);
   const [negativePoints, setNegativePoints] = useState(false);
+  // NEW: no-prediction penalty toggle
+  const [noPredictPenalty, setNoPredictPenalty] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
-  // FIX: confirmation state for delete
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   if (!profile?.is_admin) return <Navigate to="/dashboard" replace />;
@@ -78,14 +127,22 @@ export default function AdminPage() {
     const [fixRes, usersRes, settingsRes] = await Promise.all([
       supabase.from('fixtures').select('*').order('kickoff_time', { ascending: true }),
       supabase.from('profiles').select('*').order('total_points', { ascending: false }),
-      supabase.from('app_settings').select('negative_points_enabled').eq('id', 1).maybeSingle(),
+      // NEW: also fetch no_prediction_penalty_enabled
+      supabase
+        .from('app_settings')
+        .select('negative_points_enabled, no_prediction_penalty_enabled')
+        .eq('id', 1)
+        .maybeSingle(),
     ]);
     if (fixRes.error || usersRes.error) {
       setFetchError('Failed to load admin data. Please refresh.');
     }
     if (fixRes.data) setFixtures(fixRes.data);
     if (usersRes.data) setUsers(usersRes.data);
-    if (settingsRes.data) setNegativePoints(settingsRes.data.negative_points_enabled);
+    if (settingsRes.data) {
+      setNegativePoints(settingsRes.data.negative_points_enabled);
+      setNoPredictPenalty(settingsRes.data.no_prediction_penalty_enabled ?? false);
+    }
     setLoading(false);
   }, []);
 
@@ -114,7 +171,6 @@ export default function AdminPage() {
     setSavingFixture(false);
   };
 
-  // FIX: delete only runs after confirmation
   const handleDeleteFixture = async (fid: string) => {
     const { error } = await supabase.from('fixtures').delete().eq('id', fid);
     if (error) showToast(error.message, 'error');
@@ -182,15 +238,24 @@ export default function AdminPage() {
     setSavingEdit(false);
   };
 
-  const handleToggleNegativePoints = async () => {
+  /** Generic helper to flip a boolean column in app_settings row 1. */
+  const handleToggleSetting = async (
+    column: 'negative_points_enabled' | 'no_prediction_penalty_enabled',
+    currentValue: boolean,
+    setter: (v: boolean) => void,
+    label: string,
+  ) => {
     setSavingSettings(true);
-    const newValue = !negativePoints;
-    const { error } = await supabase.from('app_settings').update({
-      negative_points_enabled: newValue,
-      updated_at: new Date().toISOString(),
-    }).eq('id', 1);
+    const newValue = !currentValue;
+    const { error } = await supabase
+      .from('app_settings')
+      .update({ [column]: newValue, updated_at: new Date().toISOString() })
+      .eq('id', 1);
     if (error) showToast(error.message, 'error');
-    else { setNegativePoints(newValue); showToast(`Negative points ${newValue ? 'enabled' : 'disabled'}.`, 'info'); }
+    else {
+      setter(newValue);
+      showToast(`${label} ${newValue ? 'enabled' : 'disabled'}.`, 'info');
+    }
     setSavingSettings(false);
   };
 
@@ -281,7 +346,6 @@ export default function AdminPage() {
                         <Button variant="ghost" size="sm" onClick={() => openEdit(f)}>
                           <Pencil className="w-3 h-3" />
                         </Button>
-                        {/* FIX: triggers confirmation modal instead of deleting immediately */}
                         <Button variant="danger" size="sm" onClick={() => setConfirmDeleteId(f.id)}>
                           <Trash2 className="w-3 h-3" />
                         </Button>
@@ -320,7 +384,8 @@ export default function AdminPage() {
                   {savingResult ? 'Saving & Calculating...' : 'Enter Result & Calculate Points'}
                 </Button>
                 <p className="text-xs text-gray-500">
-                  Entering a result will automatically calculate points for all predictions and update the leaderboard.
+                  Entering a result automatically calculates points for all predictions.
+                  {noPredictPenalty && ' Users who did not predict will receive −1 pt.'}
                 </p>
               </CardContent>
             </Card>
@@ -377,34 +442,44 @@ export default function AdminPage() {
                     <Settings className="w-4 h-4 text-emerald-400" />Scoring Rules
                   </CardTitle>
                 </CardHeader>
-                <CardContent>
-                  <div className="flex items-center justify-between p-4 bg-gray-800/50 rounded-xl border border-gray-700">
-                    <div className="space-y-1">
-                      <p className="text-sm font-semibold text-white">Negative Points for Wrong Winner</p>
-                      <p className="text-xs text-gray-400">
-                        When enabled, users lose 1 point for every incorrect winner prediction.
-                      </p>
-                      <div className="flex gap-3 mt-2 flex-wrap">
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-medium">Correct winner: +2 pts</span>
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-medium">Exact score: +5 pts total</span>
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${negativePoints ? 'bg-red-500/20 text-red-400' : 'bg-gray-700 text-gray-500'}`}>
-                          Wrong winner: {negativePoints ? '−1 pt' : '0 pts'}
-                        </span>
-                      </div>
-                    </div>
-                    <button
-                      onClick={handleToggleNegativePoints}
-                      disabled={savingSettings}
-                      className="ml-4 flex-shrink-0 transition-opacity disabled:opacity-50"
-                      aria-label="Toggle negative points"
-                    >
-                      {negativePoints
-                        ? <ToggleRight className="w-12 h-12 text-emerald-400" />
-                        : <ToggleLeft className="w-12 h-12 text-gray-500" />}
-                    </button>
-                  </div>
-                  <p className="text-xs text-gray-500 mt-3">
-                    This setting only applies to future result calculations. Already-calculated predictions are not retroactively changed.
+                <CardContent className="space-y-4">
+                  {/* Toggle 1 — wrong winner penalty */}
+                  <SettingToggle
+                    title="Negative Points for Wrong Winner"
+                    description="Users lose 1 point for every incorrect winner prediction."
+                    chips={[
+                      { label: 'Correct winner: +2 pts', active: false },
+                      { label: 'Exact score: +5 pts total', active: false },
+                      { label: `Wrong winner: ${negativePoints ? '−1 pt' : '0 pts'}`, active: negativePoints },
+                    ]}
+                    enabled={negativePoints}
+                    saving={savingSettings}
+                    onToggle={() =>
+                      handleToggleSetting('negative_points_enabled', negativePoints, setNegativePoints, 'Wrong-winner penalty')
+                    }
+                  />
+
+                  {/* Toggle 2 — no-prediction penalty (NEW) */}
+                  <SettingToggle
+                    title="Penalise No-Show Predictions (−1 pt)"
+                    description={
+                      'When enabled, users who registered before a match\'s kickoff and did not submit ' +
+                      'any prediction for that match receive −1 point when the result is entered. ' +
+                      'A "Did not predict" record will appear in their history.'
+                    }
+                    chips={[
+                      { label: 'Predicted: normal scoring', active: false },
+                      { label: `No prediction: ${noPredictPenalty ? '−1 pt' : '0 pts'}`, active: noPredictPenalty },
+                    ]}
+                    enabled={noPredictPenalty}
+                    saving={savingSettings}
+                    onToggle={() =>
+                      handleToggleSetting('no_prediction_penalty_enabled', noPredictPenalty, setNoPredictPenalty, 'No-show penalty')
+                    }
+                  />
+
+                  <p className="text-xs text-gray-500">
+                    Settings only apply to future result calculations. Already-calculated predictions are not retroactively changed.
                   </p>
                 </CardContent>
               </Card>
@@ -448,7 +523,6 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* FIX: delete confirmation modal */}
       {confirmDeleteId && (
         <ConfirmModal
           message="Delete this fixture? This will also remove all associated predictions and cannot be undone."

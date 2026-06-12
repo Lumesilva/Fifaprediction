@@ -11,7 +11,7 @@ import { Avatar } from '../components/ui/avatar';
 import { getPredictionAccuracy } from '../lib/utils';
 import { useAppToast } from '../components/layout/AppLayout';
 import { motion } from 'framer-motion';
-import { User, Save, Target, Zap, TrendingUp, Award, AlertCircle } from 'lucide-react';
+import { User, Save, Target, Zap, TrendingUp, Award, AlertCircle, Ban } from 'lucide-react';
 
 export default function ProfilePage() {
   const { id } = useParams<{ id?: string }>();
@@ -78,25 +78,12 @@ export default function ProfilePage() {
     if (!user) return;
     const trimmed = editingUsername.trim();
     if (!trimmed) return;
-    // Validate username format
-    if (trimmed.length < 3 || trimmed.length > 20) {
-      showToast('Username must be 3–20 characters.', 'error');
-      return;
-    }
-    if (!/^[a-zA-Z0-9_]+$/.test(trimmed)) {
-      showToast('Only letters, numbers, and underscores allowed.', 'error');
-      return;
-    }
+    if (trimmed.length < 3 || trimmed.length > 20) { showToast('Username must be 3–20 characters.', 'error'); return; }
+    if (!/^[a-zA-Z0-9_]+$/.test(trimmed)) { showToast('Only letters, numbers, and underscores allowed.', 'error'); return; }
     setSaving(true);
     const { error } = await supabase.from('profiles').update({ username: trimmed }).eq('id', user.id);
-    if (error) {
-      showToast(error.message, 'error');
-    } else {
-      showToast('Username updated!', 'success');
-      await refreshProfile();
-      await fetchProfile();
-      setIsEditing(false);
-    }
+    if (error) { showToast(error.message, 'error'); }
+    else { showToast('Username updated!', 'success'); await refreshProfile(); await fetchProfile(); setIsEditing(false); }
     setSaving(false);
   };
 
@@ -117,25 +104,14 @@ export default function ProfilePage() {
               <div className="flex-1 text-center sm:text-left">
                 {isOwnProfile && isEditing ? (
                   <div className="flex items-center gap-2 justify-center sm:justify-start flex-wrap">
-                    <Input
-                      value={editingUsername}
-                      onChange={(e) => setEditingUsername(e.target.value)}
-                      className="max-w-[200px]"
-                      placeholder="Username"
-                    />
-                    <Button size="sm" onClick={handleSave} disabled={saving}>
-                      <Save className="w-3 h-3 mr-1" />Save
-                    </Button>
+                    <Input value={editingUsername} onChange={(e) => setEditingUsername(e.target.value)} className="max-w-[200px]" placeholder="Username" />
+                    <Button size="sm" onClick={handleSave} disabled={saving}><Save className="w-3 h-3 mr-1" />Save</Button>
                     <Button size="sm" variant="ghost" onClick={() => setIsEditing(false)}>Cancel</Button>
                   </div>
                 ) : (
                   <div className="flex items-center gap-2 justify-center sm:justify-start">
                     <h1 className="text-2xl font-bold text-white">{profileData.username}</h1>
-                    {isOwnProfile && (
-                      <Button size="sm" variant="ghost" onClick={() => setIsEditing(true)}>
-                        <User className="w-3 h-3" />
-                      </Button>
-                    )}
+                    {isOwnProfile && <Button size="sm" variant="ghost" onClick={() => setIsEditing(true)}><User className="w-3 h-3" /></Button>}
                   </div>
                 )}
                 <p className="text-gray-400 mt-1">{profileData.total_predictions} predictions made</p>
@@ -163,28 +139,37 @@ export default function ProfilePage() {
       <div>
         <h2 className="text-lg font-bold text-white mb-4">Prediction History</h2>
         {predictions.length === 0 ? (
-          <Card>
-            <CardContent className="py-8 text-center text-gray-500">No predictions yet</CardContent>
-          </Card>
+          <Card><CardContent className="py-8 text-center text-gray-500">No predictions yet</CardContent></Card>
         ) : (
           <div className="space-y-2">
-            {predictions.map((p) => (
-              <Card key={p.id}>
-                <CardContent className="py-3 flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-white font-medium">{p.home_team} vs {p.away_team}</p>
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      Predicted: {p.predicted_home_score} – {p.predicted_away_score} ({p.predicted_winner})
-                    </p>
-                  </div>
-                  {p.calculated && (
-                    <Badge variant={p.points_earned > 0 ? 'success' : p.points_earned < 0 ? 'danger' : 'default'}>
-                      {p.points_earned > 0 ? '+' : ''}{p.points_earned} pts
-                    </Badge>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
+            {predictions.map((p) => {
+              const isAbstain = p.predicted_winner === 'abstain';
+              return (
+                <Card key={p.id}>
+                  <CardContent className="py-3 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm text-white font-medium truncate">{p.home_team} vs {p.away_team}</p>
+                      {isAbstain ? (
+                        /* NEW: clear "Did not predict" label for ghost rows */
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <Ban className="w-3 h-3 text-red-400 flex-shrink-0" />
+                          <p className="text-xs text-red-400">Did not predict</p>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          Predicted: {p.predicted_home_score} – {p.predicted_away_score} ({p.predicted_winner})
+                        </p>
+                      )}
+                    </div>
+                    {p.calculated && (
+                      <Badge variant={p.points_earned > 0 ? 'success' : p.points_earned < 0 ? 'danger' : 'default'} className="flex-shrink-0">
+                        {p.points_earned > 0 ? '+' : ''}{p.points_earned} pts
+                      </Badge>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         )}
       </div>

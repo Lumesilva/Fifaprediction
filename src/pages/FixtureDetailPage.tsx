@@ -12,10 +12,10 @@ import { formatMatchDate, isPredictionLocked } from '../lib/utils';
 import { useCountdown } from '../hooks/useCountdown';
 import { useAppToast } from '../components/layout/AppLayout';
 import { motion } from 'framer-motion';
-import { Clock, MapPin, Users, ChevronLeft, Save, Lock, BarChart3, AlertCircle } from 'lucide-react';
+import { Clock, MapPin, Users, ChevronLeft, Save, Lock, BarChart3, AlertCircle, Ban } from 'lucide-react';
 
 interface PublicPrediction {
-  predicted_winner: 'home' | 'draw' | 'away';
+  predicted_winner: 'home' | 'draw' | 'away' | 'abstain';
   username: string;
 }
 
@@ -35,7 +35,6 @@ export default function FixtureDetailPage() {
   const [saving, setSaving] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
-  // FIX: live countdown via hook
   const countdown = useCountdown(fixture?.kickoff_time ?? '');
 
   const fetchData = useCallback(async () => {
@@ -54,33 +53,40 @@ export default function FixtureDetailPage() {
 
     if (predRes.data) {
       setMyPrediction(predRes.data);
-      setHomeScore(predRes.data.predicted_home_score);
-      setAwayScore(predRes.data.predicted_away_score);
+      // Only pre-fill inputs for real predictions, not ghost abstain rows
+      if (predRes.data.predicted_winner !== 'abstain') {
+        setHomeScore(predRes.data.predicted_home_score);
+        setAwayScore(predRes.data.predicted_away_score);
+      }
     }
 
-    // Community stats — aggregate client-side from all predictions for this fixture
+    // Community stats — exclude abstain rows from percentage bars
     const { data: allPreds } = await supabase
       .from('predictions')
       .select('predicted_winner, profiles!inner(username)')
       .eq('fixture_id', id);
 
     if (allPreds && allPreds.length > 0) {
-      const total = allPreds.length;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const home = allPreds.filter((p: any) => p.predicted_winner === 'home').length;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const draw = allPreds.filter((p: any) => p.predicted_winner === 'draw').length;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const away = allPreds.filter((p: any) => p.predicted_winner === 'away').length;
-      setCommunityStats({
-        home_pct: Math.round((home / total) * 100),
-        draw_pct: Math.round((draw / total) * 100),
-        away_pct: Math.round((away / total) * 100),
-        total_predictions: total,
-      });
+      const real = allPreds.filter((p: any) => p.predicted_winner !== 'abstain');
+      const total = real.length;
+      if (total > 0) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const home = real.filter((p: any) => p.predicted_winner === 'home').length;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const draw = real.filter((p: any) => p.predicted_winner === 'draw').length;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const away = real.filter((p: any) => p.predicted_winner === 'away').length;
+        setCommunityStats({
+          home_pct: Math.round((home / total) * 100),
+          draw_pct: Math.round((draw / total) * 100),
+          away_pct: Math.round((away / total) * 100),
+          total_predictions: total,
+        });
+      }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       setPublicPredictions(allPreds.map((p: any) => ({
-        predicted_winner: p.predicted_winner as 'home' | 'draw' | 'away',
+        predicted_winner: p.predicted_winner as PublicPrediction['predicted_winner'],
         username: p.profiles?.username || 'Anonymous',
       })));
     }
@@ -108,10 +114,10 @@ export default function FixtureDetailPage() {
   }
 
   const locked = isPredictionLocked(fixture.kickoff_time);
+  const isAbstain = myPrediction?.predicted_winner === 'abstain';
   const getWinner = (h: number, a: number): 'home' | 'draw' | 'away' =>
     h > a ? 'home' : h < a ? 'away' : 'draw';
 
-  /** FIX: clamp score to valid range 0–20 so keyboard input can't exceed max */
   const clampScore = (val: string) => Math.min(20, Math.max(0, parseInt(val) || 0));
 
   const handleSave = async () => {
@@ -120,35 +126,23 @@ export default function FixtureDetailPage() {
     const winner = getWinner(homeScore, awayScore);
     let saveError: string | null = null;
 
-    if (myPrediction) {
+    if (myPrediction && !isAbstain) {
       const { error } = await supabase
         .from('predictions')
-        .update({
-          predicted_home_score: homeScore,
-          predicted_away_score: awayScore,
-          predicted_winner: winner,
-        })
+        .update({ predicted_home_score: homeScore, predicted_away_score: awayScore, predicted_winner: winner })
         .eq('id', myPrediction.id);
       saveError = error?.message ?? null;
     } else {
       const { error } = await supabase
         .from('predictions')
-        .insert({
-          user_id: user.id,
-          fixture_id: id,
-          predicted_home_score: homeScore,
-          predicted_away_score: awayScore,
-          predicted_winner: winner,
-        });
+        .insert({ user_id: user.id, fixture_id: id, predicted_home_score: homeScore, predicted_away_score: awayScore, predicted_winner: winner });
       saveError = error?.message ?? null;
     }
 
     if (saveError) {
-      // FIX: show error feedback via toast
       showToast(saveError, 'error');
     } else {
-      // FIX: show success feedback via toast
-      showToast(myPrediction ? 'Prediction updated!' : 'Prediction submitted!', 'success');
+      showToast(myPrediction && !isAbstain ? 'Prediction updated!' : 'Prediction submitted!', 'success');
       await fetchData();
     }
     setSaving(false);
@@ -162,7 +156,6 @@ export default function FixtureDetailPage() {
         <ChevronLeft className="w-4 h-4" />Back to Fixtures
       </Link>
 
-      {/* Match header card */}
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
         <Card className="overflow-hidden">
           <div className="bg-gradient-to-r from-emerald-500/10 via-transparent to-teal-500/10 p-6">
@@ -180,9 +173,7 @@ export default function FixtureDetailPage() {
                   variant={fixture.status === 'live' ? 'danger' : fixture.status === 'completed' ? 'default' : 'info'}
                   className="mt-2"
                 >
-                  {fixture.status === 'live' ? '🔴 LIVE'
-                    : fixture.status === 'completed' ? 'Full Time'
-                    : countdown}
+                  {fixture.status === 'live' ? '🔴 LIVE' : fixture.status === 'completed' ? 'Full Time' : countdown}
                 </Badge>
               </div>
               <div className="text-center flex-1">
@@ -193,14 +184,8 @@ export default function FixtureDetailPage() {
             </div>
           </div>
           <CardContent className="flex flex-wrap items-center gap-4 text-sm text-gray-400 py-3">
-            <span className="flex items-center gap-1">
-              <Clock className="w-4 h-4" />{formatMatchDate(fixture.kickoff_time)}
-            </span>
-            {fixture.venue && (
-              <span className="flex items-center gap-1">
-                <MapPin className="w-4 h-4" />{fixture.venue}, {fixture.city}
-              </span>
-            )}
+            <span className="flex items-center gap-1"><Clock className="w-4 h-4" />{formatMatchDate(fixture.kickoff_time)}</span>
+            {fixture.venue && <span className="flex items-center gap-1"><MapPin className="w-4 h-4" />{fixture.venue}, {fixture.city}</span>}
             <Badge>{fixture.stage}</Badge>
             {fixture.group_name && <Badge variant="info">Group {fixture.group_name}</Badge>}
           </CardContent>
@@ -208,7 +193,6 @@ export default function FixtureDetailPage() {
       </motion.div>
 
       <div className="grid lg:grid-cols-2 gap-6">
-        {/* Prediction card */}
         <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.1 }}>
           <Card>
             <CardHeader>
@@ -219,11 +203,26 @@ export default function FixtureDetailPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {locked && !myPrediction ? (
-                <p className="text-gray-500 text-sm">Kickoff has passed. You did not submit a prediction for this match.</p>
-              ) : locked && myPrediction ? (
+              {/* No prediction + locked = show abstain state */}
+              {locked && (!myPrediction || isAbstain) ? (
+                <div className="flex flex-col items-center gap-3 py-4">
+                  <div className="w-12 h-12 rounded-full bg-red-500/15 flex items-center justify-center">
+                    <Ban className="w-6 h-6 text-red-400" />
+                  </div>
+                  <p className="text-white font-medium">Did not predict</p>
+                  <p className="text-xs text-gray-500 text-center">
+                    You did not submit a prediction before kickoff.
+                  </p>
+                  {isAbstain && myPrediction?.calculated && (
+                    <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-red-500/10 border border-red-500/20">
+                      <span className="text-sm text-gray-400">Points:</span>
+                      <span className="font-bold text-red-400">{myPrediction.points_earned} pt</span>
+                    </div>
+                  )}
+                </div>
+              ) : locked && myPrediction && !isAbstain ? (
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between text-center">
+                  <div className="flex items-center justify-between">
                     <span className="text-white font-medium">{fixture.home_team}</span>
                     <span className="text-3xl font-mono font-bold text-emerald-400 mx-4">
                       {myPrediction.predicted_home_score} – {myPrediction.predicted_away_score}
@@ -233,17 +232,13 @@ export default function FixtureDetailPage() {
                   <div className="text-center">
                     <Badge variant={myPrediction.predicted_winner === 'draw' ? 'warning' : 'success'}>
                       {myPrediction.predicted_winner === 'draw' ? 'Draw'
-                        : myPrediction.predicted_winner === 'home'
-                        ? `${fixture.home_team} Win` : `${fixture.away_team} Win`}
+                        : myPrediction.predicted_winner === 'home' ? `${fixture.home_team} Win` : `${fixture.away_team} Win`}
                     </Badge>
                   </div>
                   {myPrediction.calculated && (
                     <div className="text-center pt-2 border-t border-white/10">
                       <span className="text-sm text-gray-400">Points Earned: </span>
-                      <span className={`font-bold text-xl ${
-                        myPrediction.points_earned > 0 ? 'text-emerald-400'
-                        : myPrediction.points_earned < 0 ? 'text-red-400' : 'text-gray-500'
-                      }`}>
+                      <span className={`font-bold text-xl ${myPrediction.points_earned > 0 ? 'text-emerald-400' : myPrediction.points_earned < 0 ? 'text-red-400' : 'text-gray-500'}`}>
                         {myPrediction.points_earned > 0 ? '+' : ''}{myPrediction.points_earned}
                       </span>
                     </div>
@@ -254,39 +249,24 @@ export default function FixtureDetailPage() {
                   <div className="grid grid-cols-3 items-center gap-4">
                     <div className="text-center">
                       <p className="text-sm font-medium text-white mb-2 truncate">{fixture.home_team}</p>
-                      {/* FIX: value clamped on change to prevent inputs above 20 */}
-                      <Input
-                        type="number" min="0" max="20"
-                        value={homeScore}
-                        onChange={(e) => setHomeScore(clampScore(e.target.value))}
-                        className="text-center text-xl font-bold"
-                      />
+                      <Input type="number" min="0" max="20" value={homeScore} onChange={(e) => setHomeScore(clampScore(e.target.value))} className="text-center text-xl font-bold" />
                     </div>
                     <div className="text-center text-gray-500 font-bold text-lg">VS</div>
                     <div className="text-center">
                       <p className="text-sm font-medium text-white mb-2 truncate">{fixture.away_team}</p>
-                      <Input
-                        type="number" min="0" max="20"
-                        value={awayScore}
-                        onChange={(e) => setAwayScore(clampScore(e.target.value))}
-                        className="text-center text-xl font-bold"
-                      />
+                      <Input type="number" min="0" max="20" value={awayScore} onChange={(e) => setAwayScore(clampScore(e.target.value))} className="text-center text-xl font-bold" />
                     </div>
                   </div>
-
                   <div className="text-center space-y-1">
                     <Badge variant={getWinner(homeScore, awayScore) === 'draw' ? 'warning' : 'success'}>
                       {getWinner(homeScore, awayScore) === 'draw' ? 'Draw'
-                        : getWinner(homeScore, awayScore) === 'home'
-                        ? `${fixture.home_team} Win` : `${fixture.away_team} Win`}
+                        : getWinner(homeScore, awayScore) === 'home' ? `${fixture.home_team} Win` : `${fixture.away_team} Win`}
                     </Badge>
-                    {/* FIX: corrected scoring hint — matches actual SQL logic */}
                     <p className="text-xs text-gray-500">Correct winner: +2 pts · Exact score: +5 pts total</p>
                   </div>
-
                   <Button onClick={handleSave} className="w-full" disabled={saving || locked}>
                     <Save className="w-4 h-4 mr-2" />
-                    {saving ? 'Saving…' : myPrediction ? 'Update Prediction' : 'Submit Prediction'}
+                    {saving ? 'Saving…' : myPrediction && !isAbstain ? 'Update Prediction' : 'Submit Prediction'}
                   </Button>
                 </>
               )}
@@ -294,7 +274,6 @@ export default function FixtureDetailPage() {
           </Card>
         </motion.div>
 
-        {/* Community stats */}
         <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 }} className="space-y-4">
           <Card>
             <CardHeader>
@@ -316,9 +295,7 @@ export default function FixtureDetailPage() {
                     <div key={item.key} className="space-y-1">
                       <div className="flex justify-between text-sm">
                         <span className="text-gray-300">{item.label}</span>
-                        <span className={`font-bold ${item.pct === maxPct ? 'text-emerald-400' : 'text-gray-400'}`}>
-                          {item.pct}%
-                        </span>
+                        <span className={`font-bold ${item.pct === maxPct ? 'text-emerald-400' : 'text-gray-400'}`}>{item.pct}%</span>
                       </div>
                       <div className="h-3 rounded-full bg-gray-800 overflow-hidden">
                         <motion.div
@@ -343,7 +320,7 @@ export default function FixtureDetailPage() {
             </CardHeader>
             <CardContent>
               {publicPredictions.length === 0 ? (
-                <p className="text-gray-500 text-sm text-center py-2">No public predictions yet</p>
+                <p className="text-gray-500 text-sm text-center py-2">No predictions yet</p>
               ) : (
                 <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
                   {publicPredictions.map((pred, i) => (
@@ -352,11 +329,13 @@ export default function FixtureDetailPage() {
                         <Avatar fallback={pred.username} size="sm" />
                         <span className="text-sm text-white">{pred.username}</span>
                       </div>
-                      <Badge variant={pred.predicted_winner === 'draw' ? 'warning' : pred.predicted_winner === 'home' ? 'success' : 'info'}>
-                        {pred.predicted_winner === 'draw' ? 'Draw'
-                          : pred.predicted_winner === 'home' ? fixture.home_team
-                          : fixture.away_team}
-                      </Badge>
+                      {pred.predicted_winner === 'abstain' ? (
+                        <Badge variant="danger">Did not predict</Badge>
+                      ) : (
+                        <Badge variant={pred.predicted_winner === 'draw' ? 'warning' : pred.predicted_winner === 'home' ? 'success' : 'info'}>
+                          {pred.predicted_winner === 'draw' ? 'Draw' : pred.predicted_winner === 'home' ? fixture.home_team : fixture.away_team}
+                        </Badge>
+                      )}
                     </div>
                   ))}
                 </div>

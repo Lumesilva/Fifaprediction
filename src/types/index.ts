@@ -38,7 +38,8 @@ export interface Prediction {
   fixture_id: string;
   predicted_home_score: number;
   predicted_away_score: number;
-  predicted_winner: 'home' | 'draw' | 'away';
+  /** 'abstain' = ghost row inserted when user did not predict and no-show penalty is on */
+  predicted_winner: 'home' | 'draw' | 'away' | 'abstain';
   points_earned: number;
   calculated: boolean;
   created_at: string;
