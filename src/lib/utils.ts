@@ -25,20 +25,15 @@ export function formatMatchDate(dateStr: string): string {
   });
 }
 
-// Converts a datetime-local string entered as IST to a UTC ISO string for DB storage.
-// datetime-local has no timezone, so we manually offset IST (+05:30).
 export function istInputToUtcIso(localValue: string): string {
   if (!localValue) return '';
-  // localValue is "YYYY-MM-DDTHH:mm"
   const date = new Date(localValue + ':00+05:30');
   return date.toISOString();
 }
 
-// Converts a UTC ISO string from DB to a datetime-local value shown in IST.
 export function utcIsoToIstInput(isoStr: string): string {
   if (!isoStr) return '';
   const date = new Date(isoStr);
-  // Format as "YYYY-MM-DDTHH:mm" in IST
   const ist = new Date(date.getTime() + 5.5 * 60 * 60 * 1000);
   return ist.toISOString().slice(0, 16);
 }
@@ -49,6 +44,15 @@ export function isPredictionLocked(kickoffTime: string): boolean {
 
 export function getPredictionAccuracy(correct: number, total: number): number {
   return total === 0 ? 0 : Math.round((correct / total) * 100);
+}
+
+/** Returns true for stages where penalty shootouts can occur. */
+export function isKnockoutStage(stage: string): boolean {
+  return [
+    'Round of 32', 'Round of 16',
+    'Quarter Final', 'Semi Final',
+    'Third Place', 'Final',
+  ].includes(stage);
 }
 
 export const STAGES = [

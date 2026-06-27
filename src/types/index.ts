@@ -7,6 +7,7 @@ export interface Profile {
   correct_winners: number;
   correct_scores: number;
   total_predictions: number;
+  wildcards_remaining: number;
   created_at: string;
 }
 
@@ -27,6 +28,8 @@ export interface Fixture {
   status: 'upcoming' | 'live' | 'completed';
   home_score: number | null;
   away_score: number | null;
+  /** Penalty winner for knockout draws — 'home' | 'away' | null */
+  penalty_winner: 'home' | 'away' | null;
   result_entered: boolean;
   external_id: string | null;
   created_at: string;
@@ -38,10 +41,13 @@ export interface Prediction {
   fixture_id: string;
   predicted_home_score: number;
   predicted_away_score: number;
-  /** 'abstain' = ghost row inserted when user did not predict and no-show penalty is on */
+  /** 'abstain' = ghost row when user missed match and no-show penalty is on */
   predicted_winner: 'home' | 'draw' | 'away' | 'abstain';
+  /** Required for knockout draws — which team user predicts wins on penalties */
+  predicted_penalty_winner: 'home' | 'away' | null;
   points_earned: number;
   calculated: boolean;
+  wildcard_used: boolean;
   created_at: string;
 }
 

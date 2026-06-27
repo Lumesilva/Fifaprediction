@@ -11,14 +11,14 @@ import { Avatar } from '../components/ui/avatar';
 import { getPredictionAccuracy } from '../lib/utils';
 import { useAppToast } from '../components/layout/AppLayout';
 import { motion } from 'framer-motion';
-import { User, Save, Target, Zap, TrendingUp, Award, AlertCircle, Ban } from 'lucide-react';
+import { User, Save, Target, Zap, TrendingUp, Award, AlertCircle, Ban, Shield } from 'lucide-react';
 
 export default function ProfilePage() {
   const { id } = useParams<{ id?: string }>();
   const { user, profile: myProfile, refreshProfile } = useAuth();
   const { showToast } = useAppToast();
   const [profileData, setProfileData] = useState<Profile | null>(null);
-  const [predictions, setPredictions] = useState<(Prediction & { home_team: string; away_team: string })[]>([]);
+  const [predictions, setPredictions] = useState<(Prediction & { home_team: string; away_team: string; fixture_stage: string })[]>([]);
   const [editingUsername, setEditingUsername] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -33,12 +33,9 @@ export default function ProfilePage() {
     const [profileRes, predsRes] = await Promise.all([
       supabase.from('profiles').select('*').eq('id', profileId).maybeSingle(),
       (() => {
-        // Own profile: show all predictions (including upcoming) so the user
-        // can review their own future picks.
-        // Other profiles: only completed fixtures — prevents seeing future predictions.
         const q = supabase
           .from('predictions')
-          .select('*, fixtures!inner(home_team, away_team, status)')
+          .select('*, fixtures!inner(home_team, away_team, status, stage)')
           .eq('user_id', profileId)
           .order('created_at', { ascending: false })
           .limit(50);
@@ -53,10 +50,10 @@ export default function ProfilePage() {
         ...p,
         home_team: p.fixtures?.home_team || '',
         away_team: p.fixtures?.away_team || '',
-        fixture_status: p.fixtures?.status || '',
+        fixture_stage: p.fixtures?.stage || '',
       })));
     }
-  }, [profileId]);
+  }, [profileId, isOwnProfile]);
 
   useEffect(() => { fetchProfile(); }, [fetchProfile]);
   useEffect(() => {
@@ -80,6 +77,7 @@ export default function ProfilePage() {
   }
 
   const accuracy = getPredictionAccuracy(profileData.correct_winners, profileData.total_predictions);
+  const wildcardsUsed = 5 - (profileData.wildcards_remaining ?? 5);
 
   const handleSave = async () => {
     if (!user) return;
@@ -122,7 +120,14 @@ export default function ProfilePage() {
                   </div>
                 )}
                 <p className="text-gray-400 mt-1">{profileData.total_predictions} predictions made</p>
-                {profileData.is_admin && <Badge variant="warning" className="mt-2">Admin</Badge>}
+                <div className="flex items-center gap-2 mt-2 flex-wrap justify-center sm:justify-start">
+                  {profileData.is_admin && <Badge variant="warning">Admin</Badge>}
+                  <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-amber-400/10 border border-amber-400/20">
+                    <span className="text-sm">🃏</span>
+                    <span className="text-xs text-amber-300 font-medium">{profileData.wildcards_remaining ?? 5} / 5 wildcards left</span>
+                    {wildcardsUsed > 0 && <span className="text-xs text-gray-500">({wildcardsUsed} used)</span>}
+                  </div>
+                </div>
               </div>
             </div>
           </CardContent>
@@ -151,21 +156,35 @@ export default function ProfilePage() {
           <div className="space-y-2">
             {predictions.map((p) => {
               const isAbstain = p.predicted_winner === 'abstain';
+              const hasPenalty = p.predicted_winner === 'draw' && p.predicted_penalty_winner;
               return (
-                <Card key={p.id}>
+                <Card key={p.id} className={p.wildcard_used ? 'border-amber-400/20' : ''}>
                   <CardContent className="py-3 flex items-center justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="text-sm text-white font-medium truncate">{p.home_team} vs {p.away_team}</p>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <p className="text-sm text-white font-medium truncate">{p.home_team} vs {p.away_team}</p>
+                        {p.wildcard_used && <span className="text-sm flex-shrink-0" title="Wildcard used">🃏</span>}
+                      </div>
                       {isAbstain ? (
-                        /* NEW: clear "Did not predict" label for ghost rows */
                         <div className="flex items-center gap-1 mt-0.5">
                           <Ban className="w-3 h-3 text-red-400 flex-shrink-0" />
                           <p className="text-xs text-red-400">Did not predict</p>
                         </div>
                       ) : (
-                        <p className="text-xs text-gray-500 mt-0.5">
-                          Predicted: {p.predicted_home_score} – {p.predicted_away_score} ({p.predicted_winner})
-                        </p>
+                        <div className="mt-0.5 space-y-0.5">
+                          <p className="text-xs text-gray-500">
+                            Predicted: {p.predicted_home_score} – {p.predicted_away_score}
+                            {' '}({p.predicted_winner})
+                            {p.wildcard_used && <span className="ml-1 text-amber-400">· wildcard</span>}
+                          </p>
+                          {/* Penalty prediction row for knockout draws */}
+                          {hasPenalty && (
+                            <p className="text-xs text-sky-400 flex items-center gap-1">
+                              <Shield className="w-3 h-3 flex-shrink-0" />
+                              Pens: {p.predicted_penalty_winner === 'home' ? p.home_team : p.away_team}
+                            </p>
+                          )}
+                        </div>
                       )}
                     </div>
                     {p.calculated && (

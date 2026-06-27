@@ -8,7 +8,7 @@ import { Button } from '../components/ui/button';
 import { Select } from '../components/ui/select';
 import { Badge } from '../components/ui/badge';
 import { Avatar } from '../components/ui/avatar';
-import { STAGES, GROUPS, istInputToUtcIso, utcIsoToIstInput } from '../lib/utils';
+import { STAGES, GROUPS, istInputToUtcIso, utcIsoToIstInput, isKnockoutStage } from '../lib/utils';
 import { useAppToast } from '../components/layout/AppLayout';
 import {
   Shield, Plus, Trash2, Users, BarChart3, Award,
@@ -18,21 +18,10 @@ import { Navigate } from 'react-router-dom';
 
 type Tab = 'fixtures' | 'results' | 'users' | 'stats' | 'settings';
 
-/** Reusable toggle row for settings panel. */
-function SettingToggle({
-  title,
-  description,
-  chips,
-  enabled,
-  saving,
-  onToggle,
-}: {
-  title: string;
-  description: string;
+function SettingToggle({ title, description, chips, enabled, saving, onToggle }: {
+  title: string; description: string;
   chips: { label: string; active: boolean }[];
-  enabled: boolean;
-  saving: boolean;
-  onToggle: () => void;
+  enabled: boolean; saving: boolean; onToggle: () => void;
 }) {
   return (
     <div className="flex items-center justify-between p-4 bg-gray-800/50 rounded-xl border border-gray-700">
@@ -41,35 +30,20 @@ function SettingToggle({
         <p className="text-xs text-gray-400">{description}</p>
         <div className="flex gap-2 mt-2 flex-wrap">
           {chips.map(c => (
-            <span
-              key={c.label}
-              className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                c.active ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400'
-              }`}
-            >
+            <span key={c.label} className={`text-xs px-2 py-0.5 rounded-full font-medium ${c.active ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400'}`}>
               {c.label}
             </span>
           ))}
         </div>
       </div>
-      <button
-        onClick={onToggle}
-        disabled={saving}
-        className="flex-shrink-0 transition-opacity disabled:opacity-50"
-        aria-label={`Toggle ${title}`}
-      >
-        {enabled
-          ? <ToggleRight className="w-12 h-12 text-emerald-400" />
-          : <ToggleLeft className="w-12 h-12 text-gray-500" />}
+      <button onClick={onToggle} disabled={saving} className="flex-shrink-0 transition-opacity disabled:opacity-50" aria-label={`Toggle ${title}`}>
+        {enabled ? <ToggleRight className="w-12 h-12 text-emerald-400" /> : <ToggleLeft className="w-12 h-12 text-gray-500" />}
       </button>
     </div>
   );
 }
 
-/** Confirmation modal for destructive actions. */
-function ConfirmModal({
-  message, onConfirm, onCancel,
-}: { message: string; onConfirm: () => void; onCancel: () => void }) {
+function ConfirmModal({ message, onConfirm, onCancel }: { message: string; onConfirm: () => void; onCancel: () => void }) {
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
       <div className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-sm p-6 shadow-2xl space-y-4">
@@ -100,11 +74,16 @@ export default function AdminPage() {
     home_team_flag: '', away_team_flag: '', kickoff_time: '',
     stage: 'Group Stage', group_name: 'A', venue: '', city: '', match_number: 1,
   });
+
+  // Result entry state
   const [resultFixtureId, setResultFixtureId] = useState('');
   const [resultHomeScore, setResultHomeScore] = useState(0);
   const [resultAwayScore, setResultAwayScore] = useState(0);
+  /** Penalty winner for knockout draws — only shown/required when relevant */
+  const [resultPenaltyWinner, setResultPenaltyWinner] = useState<'home' | 'away' | ''>('');
   const [savingFixture, setSavingFixture] = useState(false);
   const [savingResult, setSavingResult] = useState(false);
+
   const [editingFixture, setEditingFixture] = useState<Fixture | null>(null);
   const [editForm, setEditForm] = useState({
     home_team: '', away_team: '', home_team_code: '', away_team_code: '',
@@ -114,12 +93,19 @@ export default function AdminPage() {
   });
   const [savingEdit, setSavingEdit] = useState(false);
   const [negativePoints, setNegativePoints] = useState(false);
-  // NEW: no-prediction penalty toggle
   const [noPredictPenalty, setNoPredictPenalty] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   if (!profile?.is_admin) return <Navigate to="/dashboard" replace />;
+
+  // The selected fixture for result entry
+  const resultFixture = fixtures.find(f => f.id === resultFixtureId) ?? null;
+  const resultIsKnockout = resultFixture ? isKnockoutStage(resultFixture.stage) : false;
+  // Draw in 90 mins?
+  const resultIs90minDraw = resultHomeScore === resultAwayScore;
+  // Penalty winner required for knockout draws
+  const penaltyWinnerRequired = resultIsKnockout && resultIs90minDraw;
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -127,16 +113,9 @@ export default function AdminPage() {
     const [fixRes, usersRes, settingsRes] = await Promise.all([
       supabase.from('fixtures').select('*').order('kickoff_time', { ascending: true }),
       supabase.from('profiles').select('*').order('total_points', { ascending: false }),
-      // NEW: also fetch no_prediction_penalty_enabled
-      supabase
-        .from('app_settings')
-        .select('negative_points_enabled, no_prediction_penalty_enabled')
-        .eq('id', 1)
-        .maybeSingle(),
+      supabase.from('app_settings').select('negative_points_enabled, no_prediction_penalty_enabled').eq('id', 1).maybeSingle(),
     ]);
-    if (fixRes.error || usersRes.error) {
-      setFetchError('Failed to load admin data. Please refresh.');
-    }
+    if (fixRes.error || usersRes.error) setFetchError('Failed to load admin data. Please refresh.');
     if (fixRes.data) setFixtures(fixRes.data);
     if (usersRes.data) setUsers(usersRes.data);
     if (settingsRes.data) {
@@ -148,24 +127,21 @@ export default function AdminPage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  // Reset penalty winner when fixture or score changes
+  useEffect(() => { setResultPenaltyWinner(''); }, [resultFixtureId, resultHomeScore, resultAwayScore]);
+
   const handleCreateFixture = async () => {
     if (!newFixture.home_team || !newFixture.away_team || !newFixture.kickoff_time) return;
     setSavingFixture(true);
     const { error } = await supabase.from('fixtures').insert({
       ...newFixture,
       kickoff_time: istInputToUtcIso(newFixture.kickoff_time),
-      status: 'upcoming',
-      result_entered: false,
+      status: 'upcoming', result_entered: false,
     });
-    if (error) {
-      showToast(error.message, 'error');
-    } else {
+    if (error) showToast(error.message, 'error');
+    else {
       showToast('Fixture created!', 'success');
-      setNewFixture({
-        home_team: '', away_team: '', home_team_code: '', away_team_code: '',
-        home_team_flag: '', away_team_flag: '', kickoff_time: '',
-        stage: 'Group Stage', group_name: 'A', venue: '', city: '', match_number: 1,
-      });
+      setNewFixture({ home_team: '', away_team: '', home_team_code: '', away_team_code: '', home_team_flag: '', away_team_flag: '', kickoff_time: '', stage: 'Group Stage', group_name: 'A', venue: '', city: '', match_number: 1 });
       await fetchData();
     }
     setSavingFixture(false);
@@ -181,25 +157,28 @@ export default function AdminPage() {
 
   const handleEnterResult = async () => {
     if (!resultFixtureId) return;
+    // Validate penalty winner required for knockout draws
+    if (penaltyWinnerRequired && !resultPenaltyWinner) {
+      showToast('Please select which team wins on penalties.', 'error');
+      return;
+    }
     setSavingResult(true);
+
     const { error: updateErr } = await supabase.from('fixtures').update({
       home_score: resultHomeScore,
       away_score: resultAwayScore,
+      penalty_winner: penaltyWinnerRequired && resultPenaltyWinner ? resultPenaltyWinner : null,
       result_entered: true,
       status: 'completed',
     }).eq('id', resultFixtureId);
 
-    if (updateErr) {
-      showToast(updateErr.message, 'error');
-      setSavingResult(false);
-      return;
-    }
+    if (updateErr) { showToast(updateErr.message, 'error'); setSavingResult(false); return; }
 
     const { error: rpcErr } = await supabase.rpc('calculate_fixture_points', { p_fixture_id: resultFixtureId });
     if (rpcErr) showToast(rpcErr.message, 'error');
     else showToast('Result saved and points calculated!', 'success');
 
-    setResultFixtureId(''); setResultHomeScore(0); setResultAwayScore(0);
+    setResultFixtureId(''); setResultHomeScore(0); setResultAwayScore(0); setResultPenaltyWinner('');
     await fetchData();
     setSavingResult(false);
   };
@@ -217,8 +196,7 @@ export default function AdminPage() {
       home_team_code: f.home_team_code, away_team_code: f.away_team_code,
       home_team_flag: f.home_team_flag, away_team_flag: f.away_team_flag,
       kickoff_time: utcIsoToIstInput(f.kickoff_time),
-      stage: f.stage, group_name: f.group_name,
-      venue: f.venue, city: f.city,
+      stage: f.stage, group_name: f.group_name, venue: f.venue, city: f.city,
       match_number: f.match_number, status: f.status,
     });
     setEditingFixture(f);
@@ -227,10 +205,7 @@ export default function AdminPage() {
   const handleSaveEdit = async () => {
     if (!editingFixture) return;
     setSavingEdit(true);
-    const { error } = await supabase.from('fixtures').update({
-      ...editForm,
-      kickoff_time: istInputToUtcIso(editForm.kickoff_time),
-    }).eq('id', editingFixture.id);
+    const { error } = await supabase.from('fixtures').update({ ...editForm, kickoff_time: istInputToUtcIso(editForm.kickoff_time) }).eq('id', editingFixture.id);
     if (error) showToast(error.message, 'error');
     else showToast('Fixture updated!', 'success');
     setEditingFixture(null);
@@ -238,24 +213,15 @@ export default function AdminPage() {
     setSavingEdit(false);
   };
 
-  /** Generic helper to flip a boolean column in app_settings row 1. */
   const handleToggleSetting = async (
     column: 'negative_points_enabled' | 'no_prediction_penalty_enabled',
-    currentValue: boolean,
-    setter: (v: boolean) => void,
-    label: string,
+    currentValue: boolean, setter: (v: boolean) => void, label: string,
   ) => {
     setSavingSettings(true);
     const newValue = !currentValue;
-    const { error } = await supabase
-      .from('app_settings')
-      .update({ [column]: newValue, updated_at: new Date().toISOString() })
-      .eq('id', 1);
+    const { error } = await supabase.from('app_settings').update({ [column]: newValue, updated_at: new Date().toISOString() }).eq('id', 1);
     if (error) showToast(error.message, 'error');
-    else {
-      setter(newValue);
-      showToast(`${label} ${newValue ? 'enabled' : 'disabled'}.`, 'info');
-    }
+    else { setter(newValue); showToast(`${label} ${newValue ? 'enabled' : 'disabled'}.`, 'info'); }
     setSavingSettings(false);
   };
 
@@ -324,7 +290,6 @@ export default function AdminPage() {
                   </Button>
                 </CardContent>
               </Card>
-
               <div className="space-y-2">
                 {fixtures.map(f => (
                   <Card key={f.id}>
@@ -336,19 +301,15 @@ export default function AdminPage() {
                         <p className="text-xs text-gray-500 mt-0.5">
                           {new Date(f.kickoff_time).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} IST
                           {' · '}{f.stage}{f.group_name ? ` · Group ${f.group_name}` : ''}
+                          {isKnockoutStage(f.stage) && <span className="ml-1 text-sky-500">· Knockout</span>}
                         </p>
                       </div>
                       <div className="flex items-center gap-2 flex-wrap">
-                        <Badge variant={f.status === 'completed' ? 'success' : f.status === 'live' ? 'danger' : 'info'}>
-                          {f.status}
-                        </Badge>
+                        <Badge variant={f.status === 'completed' ? 'success' : f.status === 'live' ? 'danger' : 'info'}>{f.status}</Badge>
                         {f.result_entered && <Badge variant="success">Result Entered</Badge>}
-                        <Button variant="ghost" size="sm" onClick={() => openEdit(f)}>
-                          <Pencil className="w-3 h-3" />
-                        </Button>
-                        <Button variant="danger" size="sm" onClick={() => setConfirmDeleteId(f.id)}>
-                          <Trash2 className="w-3 h-3" />
-                        </Button>
+                        {f.penalty_winner && <Badge variant="info">Pens: {f.penalty_winner === 'home' ? f.home_team : f.away_team}</Badge>}
+                        <Button variant="ghost" size="sm" onClick={() => openEdit(f)}><Pencil className="w-3 h-3" /></Button>
+                        <Button variant="danger" size="sm" onClick={() => setConfirmDeleteId(f.id)}><Trash2 className="w-3 h-3" /></Button>
                       </div>
                     </CardContent>
                   </Card>
@@ -365,21 +326,61 @@ export default function AdminPage() {
                   label="Select Fixture"
                   options={[
                     { value: '', label: 'Choose a fixture...' },
-                    ...fixtures
-                      .filter(f => !f.result_entered)
-                      .map(f => ({
-                        value: f.id,
-                        label: `${f.home_team} vs ${f.away_team} — ${new Date(f.kickoff_time).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })}`,
-                      })),
+                    ...fixtures.filter(f => !f.result_entered).map(f => ({
+                      value: f.id,
+                      label: `${isKnockoutStage(f.stage) ? '🏆 ' : ''}${f.home_team} vs ${f.away_team} — ${new Date(f.kickoff_time).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })}`,
+                    })),
                   ]}
                   value={resultFixtureId}
                   onChange={e => setResultFixtureId(e.target.value)}
                 />
+
+                {resultFixture && isKnockoutStage(resultFixture.stage) && (
+                  <div className="flex items-center gap-2 p-3 rounded-xl bg-sky-500/10 border border-sky-500/20 text-sky-400 text-xs">
+                    <Shield className="w-4 h-4 flex-shrink-0" />
+                    <span><strong>Knockout match.</strong> Enter the 90-minute score. If it's a draw, also select the penalty winner below.</span>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-2 gap-4">
-                  <Input label="Home Score" type="number" min="0" value={resultHomeScore.toString()} onChange={e => setResultHomeScore(parseInt(e.target.value) || 0)} />
-                  <Input label="Away Score" type="number" min="0" value={resultAwayScore.toString()} onChange={e => setResultAwayScore(parseInt(e.target.value) || 0)} />
+                  <Input label={`${resultFixture?.home_team ?? 'Home'} Score (90 min)`} type="number" min="0" value={resultHomeScore.toString()} onChange={e => setResultHomeScore(parseInt(e.target.value) || 0)} />
+                  <Input label={`${resultFixture?.away_team ?? 'Away'} Score (90 min)`} type="number" min="0" value={resultAwayScore.toString()} onChange={e => setResultAwayScore(parseInt(e.target.value) || 0)} />
                 </div>
-                <Button onClick={handleEnterResult} disabled={!resultFixtureId || savingResult}>
+
+                {/* Penalty winner — only shown for knockout draws */}
+                {penaltyWinnerRequired && resultFixture && (
+                  <div className="space-y-2 p-4 rounded-xl bg-sky-500/5 border border-sky-500/20">
+                    <p className="text-sm font-semibold text-white flex items-center gap-2">
+                      <Shield className="w-4 h-4 text-sky-400" />Penalty Winner (required)
+                    </p>
+                    <p className="text-xs text-gray-400">The 90-minute score is a draw. Select who won on penalties.</p>
+                    <div className="grid grid-cols-2 gap-3 mt-2">
+                      {(['home', 'away'] as const).map(side => {
+                        const team = side === 'home' ? resultFixture.home_team : resultFixture.away_team;
+                        const flag = side === 'home' ? resultFixture.home_team_flag : resultFixture.away_team_flag;
+                        return (
+                          <button
+                            key={side}
+                            type="button"
+                            onClick={() => setResultPenaltyWinner(side)}
+                            className={[
+                              'flex items-center gap-2 px-4 py-3 rounded-xl border-2 text-sm font-medium transition-all',
+                              resultPenaltyWinner === side
+                                ? 'border-sky-400 bg-sky-400/10 text-sky-300'
+                                : 'border-gray-600 bg-gray-800/50 text-gray-300 hover:border-sky-400/50',
+                            ].join(' ')}
+                          >
+                            <span className="text-xl">{flag}</span>
+                            <span>{team}</span>
+                            {resultPenaltyWinner === side && <CheckCircle className="w-4 h-4 ml-auto text-sky-400" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                <Button onClick={handleEnterResult} disabled={!resultFixtureId || savingResult || (penaltyWinnerRequired && !resultPenaltyWinner)}>
                   <CheckCircle className="w-4 h-4 mr-1" />
                   {savingResult ? 'Saving & Calculating...' : 'Enter Result & Calculate Points'}
                 </Button>
@@ -443,44 +444,54 @@ export default function AdminPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {/* Toggle 1 — wrong winner penalty */}
                   <SettingToggle
                     title="Negative Points for Wrong Winner"
-                    description="Users lose 1 point for every incorrect winner prediction."
+                    description="Group stage only — users lose 1 point for every incorrect winner prediction."
                     chips={[
                       { label: 'Correct winner: +2 pts', active: false },
                       { label: 'Exact score: +5 pts total', active: false },
                       { label: `Wrong winner: ${negativePoints ? '−1 pt' : '0 pts'}`, active: negativePoints },
                     ]}
-                    enabled={negativePoints}
-                    saving={savingSettings}
-                    onToggle={() =>
-                      handleToggleSetting('negative_points_enabled', negativePoints, setNegativePoints, 'Wrong-winner penalty')
-                    }
+                    enabled={negativePoints} saving={savingSettings}
+                    onToggle={() => handleToggleSetting('negative_points_enabled', negativePoints, setNegativePoints, 'Wrong-winner penalty')}
                   />
-
-                  {/* Toggle 2 — no-prediction penalty (NEW) */}
                   <SettingToggle
                     title="Penalise No-Show Predictions (−1 pt)"
-                    description={
-                      'When enabled, users who registered before a match\'s kickoff and did not submit ' +
-                      'any prediction for that match receive −1 point when the result is entered. ' +
-                      'A "Did not predict" record will appear in their history.'
-                    }
+                    description="Users who registered before kickoff and did not predict receive −1 pt when the result is entered."
                     chips={[
                       { label: 'Predicted: normal scoring', active: false },
                       { label: `No prediction: ${noPredictPenalty ? '−1 pt' : '0 pts'}`, active: noPredictPenalty },
                     ]}
-                    enabled={noPredictPenalty}
-                    saving={savingSettings}
-                    onToggle={() =>
-                      handleToggleSetting('no_prediction_penalty_enabled', noPredictPenalty, setNoPredictPenalty, 'No-show penalty')
-                    }
+                    enabled={noPredictPenalty} saving={savingSettings}
+                    onToggle={() => handleToggleSetting('no_prediction_penalty_enabled', noPredictPenalty, setNoPredictPenalty, 'No-show penalty')}
                   />
-
-                  <p className="text-xs text-gray-500">
-                    Settings only apply to future result calculations. Already-calculated predictions are not retroactively changed.
-                  </p>
+                  <div className="p-4 bg-gray-800/50 rounded-xl border border-gray-700 space-y-3">
+                    <p className="text-sm font-semibold text-white">Knockout Scoring (fixed)</p>
+                    <div className="space-y-2 text-xs">
+                      <p className="text-gray-400 font-medium">If user predicts a direct win:</p>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 pl-2">
+                        <span className="text-gray-400">Exact score, team wins 90 min</span><span className="text-emerald-400 font-bold">+5 pts</span>
+                        <span className="text-gray-400">Wrong score, team wins 90 min</span><span className="text-emerald-400 font-bold">+2 pts</span>
+                        <span className="text-gray-400">Game goes to penalties</span><span className="text-red-400 font-bold">0 pts</span>
+                        <span className="text-gray-400">Wrong team wins</span><span className="text-red-400 font-bold">0 pts</span>
+                      </div>
+                      <p className="text-gray-400 font-medium mt-2">If user predicts a draw + picks penalty winner:</p>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 pl-2">
+                        <span className="text-gray-400">Exact draw score + correct pens</span><span className="text-emerald-400 font-bold">+5 pts</span>
+                        <span className="text-gray-400">Wrong draw score + correct pens</span><span className="text-sky-400 font-bold">+3 pts</span>
+                        <span className="text-gray-400">Any draw score + wrong pens</span><span className="text-amber-400 font-bold">+2 pts</span>
+                        <span className="text-gray-400">Game NOT a draw</span><span className="text-red-400 font-bold">0 pts</span>
+                      </div>
+                      <p className="text-gray-400 font-medium mt-2">Wildcard multipliers (knockout):</p>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 pl-2">
+                        <span className="text-gray-400">5 pts →</span><span className="text-amber-300 font-bold">10 pts</span>
+                        <span className="text-gray-400">3 pts →</span><span className="text-amber-300 font-bold">6 pts</span>
+                        <span className="text-gray-400">2 pts →</span><span className="text-amber-300 font-bold">4 pts</span>
+                        <span className="text-gray-400">0 pts →</span><span className="text-red-400 font-bold">−3 pts</span>
+                      </div>
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-500">Settings only apply to future result calculations. Already-calculated predictions are not retroactively changed.</p>
                 </CardContent>
               </Card>
             </div>
@@ -488,15 +499,12 @@ export default function AdminPage() {
         </>
       )}
 
-      {/* Edit Fixture Modal */}
       {editingFixture && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
           <div className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl">
             <div className="flex items-center justify-between p-5 border-b border-gray-700">
               <h2 className="text-lg font-bold text-white">Edit Fixture</h2>
-              <button onClick={() => setEditingFixture(null)} className="text-gray-400 hover:text-white transition-colors">
-                <X className="w-5 h-5" />
-              </button>
+              <button onClick={() => setEditingFixture(null)} className="text-gray-400 hover:text-white transition-colors"><X className="w-5 h-5" /></button>
             </div>
             <div className="p-5 space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
