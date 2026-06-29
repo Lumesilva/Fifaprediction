@@ -133,9 +133,9 @@ export default function FixtureDetailPage() {
 
   // Derived state
   const isKnockout = fixture ? isKnockoutStage(fixture.stage) : false;
-  const predicted90minDraw = homeScore === awayScore;
+  const predicted120minDraw = homeScore === awayScore;
   // Penalty picker is shown for knockout matches where user predicts a draw
-  const showPenaltyPicker = isKnockout && predicted90minDraw;
+  const showPenaltyPicker = isKnockout && predicted120minDraw;
 
   const fetchData = useCallback(async () => {
     if (!id) return;
@@ -197,8 +197,8 @@ export default function FixtureDetailPage() {
 
   // Clear penalty winner when score is no longer a draw (knockout)
   useEffect(() => {
-    if (isKnockout && !predicted90minDraw) setPenaltyWinner(null);
-  }, [isKnockout, predicted90minDraw]);
+    if (isKnockout && !predicted120minDraw) setPenaltyWinner(null);
+  }, [isKnockout, predicted120minDraw]);
 
   if (fetchError) {
     return (
@@ -224,12 +224,12 @@ export default function FixtureDetailPage() {
 
   const clampScore = (val: string) => Math.min(20, Math.max(0, parseInt(val) || 0));
 
-  const getWinner90 = (h: number, a: number): 'home' | 'draw' | 'away' =>
+  const getWinner120 = (h: number, a: number): 'home' | 'draw' | 'away' =>
     h > a ? 'home' : h < a ? 'away' : 'draw';
 
   /** Derive who user predicts to advance (for display) */
   const predictedAdvancing = (): string => {
-    const w90 = getWinner90(homeScore, awayScore);
+    const w90 = getWinner120(homeScore, awayScore);
     if (w90 === 'home') return fixture.home_team;
     if (w90 === 'away') return fixture.away_team;
     if (penaltyWinner === 'home') return `${fixture.home_team} (pens)`;
@@ -252,14 +252,14 @@ export default function FixtureDetailPage() {
     }
 
     // Knockout — draw path
-    if (predicted90minDraw) {
+    if (predicted120minDraw) {
       if (wildcardActive) {
         return (
           <span>🃏 Exact score + correct pens: <strong>+10 pts</strong> · Wrong score + correct pens: <strong>+6 pts</strong> · Wrong pens: <strong>+4 pts</strong> · Not a draw: <strong>−3 pts</strong></span>
         );
       }
       return (
-        <span>Exact score + correct pens: <strong>+5 pts</strong> · Wrong score + correct pens: <strong>+3 pts</strong> · Wrong pens: <strong>+2 pts</strong> · Not a draw: <strong>0 pts</strong></span>
+        <span>Exact score + correct pens: <strong>+5 pts</strong> · Wrong score + correct pens: <strong>+3 pts</strong> · Wrong pens: <strong>+2 pts</strong> · Not a draw: <strong>−1 pt</strong> (or 0)</span>
       );
     }
 
@@ -270,7 +270,7 @@ export default function FixtureDetailPage() {
       );
     }
     return (
-      <span>Exact score: <strong>+5 pts</strong> · Correct team wins in 120 min: <strong>+2 pts</strong> · Goes to pens or wrong team: <strong>0 pts</strong></span>
+      <span>Exact score: <strong>+5 pts</strong> · Correct team wins in 120 min: <strong>+2 pts</strong> · Goes to pens or wrong team: <strong>−1 pt</strong> (or 0)</span>
     );
   };
 
@@ -280,13 +280,13 @@ export default function FixtureDetailPage() {
     if (!user || !id || locked) return;
 
     // Validation: knockout draw requires penalty winner
-    if (isKnockout && predicted90minDraw && !penaltyWinner) {
+    if (isKnockout && predicted120minDraw && !penaltyWinner) {
       showToast('Please select a penalty winner for this knockout match.', 'error');
       return;
     }
 
     setSaving(true);
-    const winner90 = getWinner90(homeScore, awayScore);
+    const winner120 = getWinner120(homeScore, awayScore);
     const previouslyUsedWildcard = myPrediction?.wildcard_used ?? false;
     const wildcardChanging = wildcardActive !== previouslyUsedWildcard;
     const wildcardDelta = wildcardChanging ? (wildcardActive ? -1 : 1) : 0;
@@ -300,9 +300,9 @@ export default function FixtureDetailPage() {
     const payload = {
       predicted_home_score: homeScore,
       predicted_away_score: awayScore,
-      predicted_winner: winner90,
+      predicted_winner: winner120,
       // Only store penalty winner for knockout draws, null otherwise
-      predicted_penalty_winner: (isKnockout && winner90 === 'draw') ? penaltyWinner : null,
+      predicted_penalty_winner: (isKnockout && winner120 === 'draw') ? penaltyWinner : null,
       wildcard_used: wildcardActive,
     };
 
@@ -486,9 +486,9 @@ export default function FixtureDetailPage() {
                             <span className="text-gray-400">Wrong score, team wins 120 min</span>
                             <span className="text-emerald-400 font-bold">+2 pts</span>
                             <span className="text-gray-400">Game goes to penalties</span>
-                            <span className="text-red-400 font-bold">0 pts</span>
+                            <span className="text-red-400 font-bold">−1 pt (or 0)</span>
                             <span className="text-gray-400">Wrong team wins</span>
-                            <span className="text-red-400 font-bold">0 pts</span>
+                            <span className="text-red-400 font-bold">−1 pt (or 0)</span>
                           </div>
                         </div>
 
@@ -505,7 +505,7 @@ export default function FixtureDetailPage() {
                             <span className="text-gray-400">Any draw score + wrong pens</span>
                             <span className="text-amber-400 font-bold">+2 pts</span>
                             <span className="text-gray-400">Game NOT a draw (direct win)</span>
-                            <span className="text-red-400 font-bold">0 pts</span>
+                            <span className="text-red-400 font-bold">−1 pt (or 0)</span>
                           </div>
                         </div>
 
@@ -518,7 +518,7 @@ export default function FixtureDetailPage() {
                                 <span className="text-gray-400">5 pts →</span><span className="text-amber-300 font-bold">10 pts</span>
                                 <span className="text-gray-400">3 pts →</span><span className="text-amber-300 font-bold">6 pts</span>
                                 <span className="text-gray-400">2 pts →</span><span className="text-amber-300 font-bold">4 pts</span>
-                                <span className="text-gray-400">0 pts →</span><span className="text-red-400 font-bold">−3 pts</span>
+                                <span className="text-gray-400">0 / −1 pts →</span><span className="text-red-400 font-bold">−3 pts</span>
                               </div>
                             </div>
                           </>
@@ -566,19 +566,19 @@ export default function FixtureDetailPage() {
                   <div className="text-center space-y-1">
                     {isKnockout ? (
                       <p className="text-sm text-gray-300">
-                        {predicted90minDraw
+                        {predicted120minDraw
                           ? <>Draw → Pens: <strong className="text-white">{predictedAdvancing()}</strong></>
                           : <>Advancing: <strong className="text-white">{predictedAdvancing()}</strong></>}
                       </p>
                     ) : (
-                      <Badge variant={getWinner90(homeScore, awayScore) === 'draw' ? 'warning' : 'success'}>
-                        {getWinner90(homeScore, awayScore) === 'draw' ? 'Draw'
-                          : getWinner90(homeScore, awayScore) === 'home' ? `${fixture.home_team} Win` : `${fixture.away_team} Win`}
+                      <Badge variant={getWinner120(homeScore, awayScore) === 'draw' ? 'warning' : 'success'}>
+                        {getWinner120(homeScore, awayScore) === 'draw' ? 'Draw'
+                          : getWinner120(homeScore, awayScore) === 'home' ? `${fixture.home_team} Win` : `${fixture.away_team} Win`}
                       </Badge>
                     )}
                     <AnimatePresence mode="wait">
                       <motion.p
-                        key={`${wildcardActive}-${predicted90minDraw}-${isKnockout}`}
+                        key={`${wildcardActive}-${predicted120minDraw}-${isKnockout}`}
                         initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 4 }}
                         className={`text-xs ${wildcardActive ? 'text-amber-400 font-medium' : 'text-gray-500'}`}
                       >

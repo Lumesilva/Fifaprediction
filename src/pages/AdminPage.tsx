@@ -103,9 +103,9 @@ export default function AdminPage() {
   const resultFixture = fixtures.find(f => f.id === resultFixtureId) ?? null;
   const resultIsKnockout = resultFixture ? isKnockoutStage(resultFixture.stage) : false;
   // Draw in 90 mins?
-  const resultIs90minDraw = resultHomeScore === resultAwayScore;
+  const resultIs120minDraw = resultHomeScore === resultAwayScore;
   // Penalty winner required for knockout draws
-  const penaltyWinnerRequired = resultIsKnockout && resultIs90minDraw;
+  const penaltyWinnerRequired = resultIsKnockout && resultIs120minDraw;
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -338,13 +338,13 @@ export default function AdminPage() {
                 {resultFixture && isKnockoutStage(resultFixture.stage) && (
                   <div className="flex items-center gap-2 p-3 rounded-xl bg-sky-500/10 border border-sky-500/20 text-sky-400 text-xs">
                     <Shield className="w-4 h-4 flex-shrink-0" />
-                    <span><strong>Knockout match.</strong> Enter the 90-minute score. If it's a draw, also select the penalty winner below.</span>
+                    <span><strong>Knockout match.</strong> Enter the 120-minute score. If it's a draw, also select the penalty winner below.</span>
                   </div>
                 )}
 
                 <div className="grid grid-cols-2 gap-4">
-                  <Input label={`${resultFixture?.home_team ?? 'Home'} Score (90 min)`} type="number" min="0" value={resultHomeScore.toString()} onChange={e => setResultHomeScore(parseInt(e.target.value) || 0)} />
-                  <Input label={`${resultFixture?.away_team ?? 'Away'} Score (90 min)`} type="number" min="0" value={resultAwayScore.toString()} onChange={e => setResultAwayScore(parseInt(e.target.value) || 0)} />
+                  <Input label={`${resultFixture?.home_team ?? 'Home'} Score (120 min)`} type="number" min="0" value={resultHomeScore.toString()} onChange={e => setResultHomeScore(parseInt(e.target.value) || 0)} />
+                  <Input label={`${resultFixture?.away_team ?? 'Away'} Score (120 min)`} type="number" min="0" value={resultAwayScore.toString()} onChange={e => setResultAwayScore(parseInt(e.target.value) || 0)} />
                 </div>
 
                 {/* Penalty winner — only shown for knockout draws */}
@@ -353,7 +353,7 @@ export default function AdminPage() {
                     <p className="text-sm font-semibold text-white flex items-center gap-2">
                       <Shield className="w-4 h-4 text-sky-400" />Penalty Winner (required)
                     </p>
-                    <p className="text-xs text-gray-400">The 90-minute score is a draw. Select who won on penalties.</p>
+                    <p className="text-xs text-gray-400">The 120-minute score is a draw. Select who won on penalties.</p>
                     <div className="grid grid-cols-2 gap-3 mt-2">
                       {(['home', 'away'] as const).map(side => {
                         const team = side === 'home' ? resultFixture.home_team : resultFixture.away_team;
@@ -470,24 +470,24 @@ export default function AdminPage() {
                     <div className="space-y-2 text-xs">
                       <p className="text-gray-400 font-medium">If user predicts a direct win:</p>
                       <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 pl-2">
-                        <span className="text-gray-400">Exact score, team wins 90 min</span><span className="text-emerald-400 font-bold">+5 pts</span>
-                        <span className="text-gray-400">Wrong score, team wins 90 min</span><span className="text-emerald-400 font-bold">+2 pts</span>
-                        <span className="text-gray-400">Game goes to penalties</span><span className="text-red-400 font-bold">0 pts</span>
-                        <span className="text-gray-400">Wrong team wins</span><span className="text-red-400 font-bold">0 pts</span>
+                        <span className="text-gray-400">Exact score, team wins 120 min</span><span className="text-emerald-400 font-bold">+5 pts</span>
+                        <span className="text-gray-400">Wrong score, team wins 120 min</span><span className="text-emerald-400 font-bold">+2 pts</span>
+                        <span className="text-gray-400">Game goes to penalties</span><span className="text-red-400 font-bold">−1 pt (or 0)</span>
+                        <span className="text-gray-400">Wrong team wins</span><span className="text-red-400 font-bold">−1 pt (or 0)</span>
                       </div>
                       <p className="text-gray-400 font-medium mt-2">If user predicts a draw + picks penalty winner:</p>
                       <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 pl-2">
                         <span className="text-gray-400">Exact draw score + correct pens</span><span className="text-emerald-400 font-bold">+5 pts</span>
                         <span className="text-gray-400">Wrong draw score + correct pens</span><span className="text-sky-400 font-bold">+3 pts</span>
                         <span className="text-gray-400">Any draw score + wrong pens</span><span className="text-amber-400 font-bold">+2 pts</span>
-                        <span className="text-gray-400">Game NOT a draw</span><span className="text-red-400 font-bold">0 pts</span>
+                        <span className="text-gray-400">Game NOT a draw</span><span className="text-red-400 font-bold">−1 pt (or 0)</span>
                       </div>
                       <p className="text-gray-400 font-medium mt-2">Wildcard multipliers (knockout):</p>
                       <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 pl-2">
                         <span className="text-gray-400">5 pts →</span><span className="text-amber-300 font-bold">10 pts</span>
                         <span className="text-gray-400">3 pts →</span><span className="text-amber-300 font-bold">6 pts</span>
                         <span className="text-gray-400">2 pts →</span><span className="text-amber-300 font-bold">4 pts</span>
-                        <span className="text-gray-400">0 pts →</span><span className="text-red-400 font-bold">−3 pts</span>
+                        <span className="text-gray-400">0 / −1 pts →</span><span className="text-red-400 font-bold">−3 pts</span>
                       </div>
                     </div>
                   </div>
