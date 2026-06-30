@@ -266,11 +266,11 @@ export default function FixtureDetailPage() {
     // Knockout — direct win path
     if (wildcardActive) {
       return (
-        <span>🃏 Exact score: <strong>+10 pts</strong> · Correct team wins 120 min: <strong>+4 pts</strong> · Goes to pens or wrong team: <strong>−3 pts</strong></span>
+        <span>🃏 Exact score + correct team: <strong>+10 pts</strong> · Correct team wins (120 min or pens): <strong>+4 pts</strong> · Wrong team: <strong>−3 pts</strong></span>
       );
     }
     return (
-      <span>Exact score: <strong>+5 pts</strong> · Correct team wins in 120 min: <strong>+2 pts</strong> · Goes to pens or wrong team: <strong>−1 pt</strong> (or 0)</span>
+      <span>Exact score + correct team: <strong>+5 pts</strong> · Correct team wins (120 min or pens): <strong>+2 pts</strong> · Wrong team: <strong>−1 pt</strong> (or 0)</span>
     );
   };
 
@@ -481,15 +481,16 @@ export default function FixtureDetailPage() {
                         <div className="space-y-1">
                           <p className="text-gray-300 font-medium">If you predict a direct win (e.g. Argentina 2–1):</p>
                           <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 pl-2">
-                            <span className="text-gray-400">Exact score, team wins 120 min</span>
+                            <span className="text-gray-400">Exact 120-min score, team advances</span>
                             <span className="text-emerald-400 font-bold">+5 pts</span>
-                            <span className="text-gray-400">Wrong score, team wins 120 min</span>
+                            <span className="text-gray-400">Wrong score, team advances (120 min or pens)</span>
                             <span className="text-emerald-400 font-bold">+2 pts</span>
-                            <span className="text-gray-400">Game goes to penalties</span>
-                            <span className="text-red-400 font-bold">−1 pt (or 0)</span>
-                            <span className="text-gray-400">Wrong team wins</span>
+                            <span className="text-gray-400">Wrong team advances</span>
                             <span className="text-red-400 font-bold">−1 pt (or 0)</span>
                           </div>
+                          <p className="text-gray-500 italic pl-2 pt-0.5">
+                            Picking a team to win directly still scores if they advance via penalties — only the score bonus is lost.
+                          </p>
                         </div>
 
                         <div className="border-t border-sky-500/20" />

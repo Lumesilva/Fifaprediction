@@ -470,10 +470,9 @@ export default function AdminPage() {
                     <div className="space-y-2 text-xs">
                       <p className="text-gray-400 font-medium">If user predicts a direct win:</p>
                       <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 pl-2">
-                        <span className="text-gray-400">Exact score, team wins 120 min</span><span className="text-emerald-400 font-bold">+5 pts</span>
-                        <span className="text-gray-400">Wrong score, team wins 120 min</span><span className="text-emerald-400 font-bold">+2 pts</span>
-                        <span className="text-gray-400">Game goes to penalties</span><span className="text-red-400 font-bold">−1 pt (or 0)</span>
-                        <span className="text-gray-400">Wrong team wins</span><span className="text-red-400 font-bold">−1 pt (or 0)</span>
+                        <span className="text-gray-400">Exact 120-min score, team advances</span><span className="text-emerald-400 font-bold">+5 pts</span>
+                        <span className="text-gray-400">Wrong score, team advances (120 min or pens)</span><span className="text-emerald-400 font-bold">+2 pts</span>
+                        <span className="text-gray-400">Wrong team advances</span><span className="text-red-400 font-bold">−1 pt (or 0)</span>
                       </div>
                       <p className="text-gray-400 font-medium mt-2">If user predicts a draw + picks penalty winner:</p>
                       <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 pl-2">
