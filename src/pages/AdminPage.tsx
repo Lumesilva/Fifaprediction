@@ -479,7 +479,8 @@ export default function AdminPage() {
                         <span className="text-gray-400">Exact draw score + correct pens</span><span className="text-emerald-400 font-bold">+5 pts</span>
                         <span className="text-gray-400">Wrong draw score + correct pens</span><span className="text-sky-400 font-bold">+3 pts</span>
                         <span className="text-gray-400">Any draw score + wrong pens</span><span className="text-amber-400 font-bold">+2 pts</span>
-                        <span className="text-gray-400">Game NOT a draw</span><span className="text-red-400 font-bold">−1 pt (or 0)</span>
+                        <span className="text-gray-400">Not a draw + picked team won</span><span className="text-emerald-400 font-bold">+2 pts</span>
+                        <span className="text-gray-400">Not a draw + wrong team won</span><span className="text-red-400 font-bold">−1 pt (or 0)</span>
                       </div>
                       <p className="text-gray-400 font-medium mt-2">Wildcard multipliers (knockout):</p>
                       <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 pl-2">

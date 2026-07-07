@@ -255,11 +255,11 @@ export default function FixtureDetailPage() {
     if (predicted120minDraw) {
       if (wildcardActive) {
         return (
-          <span>🃏 Exact score + correct pens: <strong>+10 pts</strong> · Wrong score + correct pens: <strong>+6 pts</strong> · Wrong pens: <strong>+4 pts</strong> · Not a draw: <strong>−3 pts</strong></span>
+          <span>🃏 Exact score + correct pens: <strong>+10 pts</strong> · Wrong score + correct pens: <strong>+6 pts</strong> · Wrong pens: <strong>+4 pts</strong> · Not a draw + right team: <strong>+4 pts</strong> · Not a draw + wrong team: <strong>−3 pts</strong></span>
         );
       }
       return (
-        <span>Exact score + correct pens: <strong>+5 pts</strong> · Wrong score + correct pens: <strong>+3 pts</strong> · Wrong pens: <strong>+2 pts</strong> · Not a draw: <strong>−1 pt</strong> (or 0)</span>
+        <span>Exact score + correct pens: <strong>+5 pts</strong> · Wrong score + correct pens: <strong>+3 pts</strong> · Wrong pens: <strong>+2 pts</strong> · Not a draw + right team: <strong>+2 pts</strong> · Not a draw + wrong team: <strong>−1 pt</strong> (or 0)</span>
       );
     }
 
@@ -505,9 +505,14 @@ export default function FixtureDetailPage() {
                             <span className="text-sky-400 font-bold">+3 pts</span>
                             <span className="text-gray-400">Any draw score + wrong pens</span>
                             <span className="text-amber-400 font-bold">+2 pts</span>
-                            <span className="text-gray-400">Game NOT a draw (direct win)</span>
+                            <span className="text-gray-400">Not a draw + your picked team won</span>
+                            <span className="text-emerald-400 font-bold">+2 pts</span>
+                            <span className="text-gray-400">Not a draw + wrong team won</span>
                             <span className="text-red-400 font-bold">−1 pt (or 0)</span>
                           </div>
+                          <p className="text-gray-500 italic pl-2 pt-0.5">
+                            If the game doesn't end in a draw, your penalty winner pick is checked against the actual winner.
+                          </p>
                         </div>
 
                         {wildcardActive && (
